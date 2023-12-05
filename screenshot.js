@@ -3,11 +3,13 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
 const url = process.argv[2];
-const timeout = 8000;
+const timeout = 5000;
 
 (async () => {
     const browser = await puppeteer.launch( {
-        headless: "new",
+        headless: "false",
+        executablePath: '/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary',
+        userDataDir: '/Users/jasonzhou/Library/Application\ Support/Google/Chrome\ Canary/Default',
     } );
 
     const page = await browser.newPage();
@@ -18,22 +20,17 @@ const timeout = 8000;
         deviceScaleFactor: 1,
     } );
 
-    setTimeout(async () => {
-        await page.screenshot( {
-            path: "screenshot.jpg",
-            fullPage: true,
-        } );
-    }, timeout-2000);
-
     await page.goto( url, {
-        waitUntil: "networkidle0",
+        waitUntil: "domcontentloaded",
         timeout: timeout,
     } );
 
-    await page.screenshot( {
+    await page.waitForTimeout(timeout);
+
+    await page.screenshot({
         path: "screenshot.jpg",
         fullPage: true,
-    } );
+    });
 
     await browser.close();
 })();

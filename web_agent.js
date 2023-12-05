@@ -1,13 +1,14 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import OpenAI from 'openai';
-import readline from 'readline';
-import fs from 'fs';
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const OpenAI = require('openai');
+const readline = require('readline');
+const fs = require('fs');
+require('dotenv/config');
 
 puppeteer.use(StealthPlugin());
 
 const openai = new OpenAI();
-const timeout = 8000;
+const timeout = 5000;
 
 async function image_to_base64(image_file) {
     return await new Promise((resolve, reject) => {
@@ -135,7 +136,9 @@ async function waitForEvent(page, event) {
     console.log( "###########################################\n" );
 
     const browser = await puppeteer.launch( {
-        headless: "new",
+        headless: "false",
+        executablePath: '/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary',
+        userDataDir: '/Users/jasonzhou/Library/Application\ Support/Google/Chrome\ Canary/Default',
     } );
 
     const page = await browser.newPage();
@@ -143,7 +146,7 @@ async function waitForEvent(page, event) {
     await page.setViewport( {
         width: 1200,
         height: 1200,
-        deviceScaleFactor: 1.75,
+        deviceScaleFactor: 1,
     } );
 
     const messages = [
@@ -151,15 +154,15 @@ async function waitForEvent(page, event) {
             "role": "system",
             "content": `You are a website crawler. You will be given instructions on what to do by browsing. You are connected to a web browser and you will be given the screenshot of the website you are on. The links on the website will be highlighted in red in the screenshot. Always read what is in the screenshot. Don't guess link names.
 
-You can go to a specific URL by answering with the following JSON format:
-{"url": "url goes here"}
+            You can go to a specific URL by answering with the following JSON format:
+            {"url": "url goes here"}
 
-You can click links on the website by referencing the text inside of the link/button, by answering in the following JSON format:
-{"click": "Text in link"}
+            You can click links on the website by referencing the text inside of the link/button, by answering in the following JSON format:
+            {"click": "Text in link"}
 
-Once you are on a URL and you have found the answer to the user's question, you can answer with a regular message.
+            Once you are on a URL and you have found the answer to the user's question, you can answer with a regular message.
 
-In the beginning, go to a direct URL that you think might contain the answer to the user's question. Prefer to go directly to sub-urls like 'https://google.com/search?q=search' if applicable. Prefer to use Google for simple queries. If the user provides a direct URL, go to that one.`,
+            Use google search by set a sub-page like 'https://google.com/search?q=search' if applicable. Prefer to use Google for simple queries. If the user provides a direct URL, go to that one. Do not make up links`,
         }
     ];
 
@@ -180,9 +183,8 @@ In the beginning, go to a direct URL that you think might contain the answer to 
             console.log("Crawling " + url);
             await page.goto( url, {
                 waitUntil: "domcontentloaded",
+                timeout: timeout,
             } );
-
-            await highlight_links( page );
 
             await Promise.race( [
                 waitForEvent(page, 'load'),
@@ -193,7 +195,7 @@ In the beginning, go to a direct URL that you think might contain the answer to 
 
             await page.screenshot( {
                 path: "screenshot.jpg",
-                quality: 100,
+                fullPage: true,
             } );
 
             screenshot_taken = true;
@@ -223,7 +225,6 @@ In the beginning, go to a direct URL that you think might contain the answer to 
         const response = await openai.chat.completions.create({
             model: "gpt-4-vision-preview",
             max_tokens: 1024,
-            //seed: 665234,
             messages: messages,
         });
 
@@ -237,67 +238,70 @@ In the beginning, go to a direct URL that you think might contain the answer to 
 
         console.log( "GPT: " + message_text );
 
-        if( message_text.indexOf('{"click": "') !== -1 ) {
+        if (message_text.indexOf('{"click": "') !== -1) {
             let parts = message_text.split('{"click": "');
             parts = parts[1].split('"}');
             const link_text = parts[0].replace(/[^a-zA-Z0-9 ]/g, '');
-
+        
             console.log("Clicking on " + link_text)
-
+        
             try {
                 const elements = await page.$$('[gpt-link-text]');
-
+        
                 let partial;
                 let exact;
-
-                for( const element of elements ) {
-                    const attributeValue = await element.getAttribute('gpt-link-text');
-
-                    if( attributeValue.includes( link_text ) ) {
+        
+                for (const element of elements) {
+                    const attributeValue = await element.evaluate(el => el.getAttribute('gpt-link-text'));
+        
+                    if (attributeValue.includes(link_text)) {
                         partial = element;
                     }
-
-                    if( attributeValue === link_text ) {
+        
+                    if (attributeValue === link_text) {
                         exact = element;
                     }
                 }
+        
+                if (exact || partial) {
+                    const [response] = await Promise.all([
+                        page.waitForNavigation({ waitUntil: 'domcontentloaded' }).catch(e => console.log("Navigation timeout/error:", e.message)),
+                        (exact || partial).click()
+                    ]);
+        
+                    // Additional checks can be done here, like validating the response or URL
+                    await Promise.race( [
+                        waitForEvent(page, 'load'),
+                        sleep(timeout)
+                    ] );
 
-                if( exact ) {
-                    await exact.click();
-                } else if( partial ) {
-                    await partial.click();
+                    await highlight_links(page);
+        
+                    await page.screenshot({
+                        path: "screenshot.jpg",
+                        quality: 100,
+                        fullpage: true
+                    });
+        
+                    screenshot_taken = true;
                 } else {
-                    throw new Error( "Can't find link" );
+                    throw new Error("Can't find link");
                 }
-
-                await Promise.race( [
-                    waitForEvent(page, 'load'),
-                    sleep(timeout)
-                ] );
-
-                await highlight_links( page );
-
-                await page.screenshot( {
-                    path: "screenshot.jpg",
-                    quality: 100,
-                } );
-
-                screenshot_taken = true;
-            } catch( error ) {
-                console.log( "ERROR: Clicking failed" );
-
+            } catch (error) {
+                console.log("ERROR: Clicking failed", error);
+        
                 messages.push({
                     "role": "user",
                     "content": "ERROR: I was unable to click that element",
                 });
             }
-
+        
             continue;
-        } else if( message_text.indexOf('{"url": "') !== -1 ) {
+        } else if (message_text.indexOf('{"url": "') !== -1) {
             let parts = message_text.split('{"url": "');
             parts = parts[1].split('"}');
             url = parts[0];
-
+        
             continue;
         }
 
