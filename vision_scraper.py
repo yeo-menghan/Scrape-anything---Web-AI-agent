@@ -3,10 +3,11 @@ import subprocess
 import base64
 import os
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
-
-model = OpenAI()
+openai_api_key = os.getenv("OPENAI_API_KEY")
+model = OpenAI(api_key=openai_api_key)
 model.timeout = 30
 
 def image_b64(image):
@@ -31,7 +32,7 @@ def url2screenshot(url):
     if not os.path.exists("screenshot.jpg"):
         print("ERROR")
         return "Failed to scrape the website"
-    
+
     b64_image = image_b64("screenshot.jpg")
     return b64_image
 
@@ -75,7 +76,7 @@ def visionCrawl(url, prompt):
     b64_image = url2screenshot(url)
 
     print("Image captured")
-    
+
     if b64_image == "Failed to scrape the website":
         return "I was unable to crawl that site. Please pick a different one."
     else:
