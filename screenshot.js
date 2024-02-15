@@ -2,13 +2,12 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 
-// const url = process.argv[2];
-const url = "https://en.wikipedia.org/wiki/Elon_Musk";
+const url = process.argv[2];
 const timeout = 5000;
 
 (async () => {
     const browser = await puppeteer.launch( {
-        headless: "false",
+        headless: false,
         executablePath: '/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary',
         userDataDir: '/Users/yeo_menghan/Library/Application\ Support/Google/Chrome\ Canary/Default',
     } );

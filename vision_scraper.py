@@ -3,7 +3,6 @@ import subprocess
 import base64
 import os
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -42,7 +41,7 @@ def visionExtract(b64_image, prompt):
         messages=[
             {
                 "role": "system",
-                "content": "You a web scraper, your job is to extract information based on a screenshot of a website & user's instruction",
+                "content": "You are a web scraper, your job is to extract information based on a screenshot of a website & user's instruction",
             }
         ] + [
             {
@@ -64,13 +63,25 @@ def visionExtract(b64_image, prompt):
 
     message = response.choices[0].message
     message_text = message.content
+    # Access the `usage` attribute correctly
+    if hasattr(response, 'usage'):
+        total_tokens = response.usage.total_tokens
+    else:
+        total_tokens = 'Unknown'
 
     if "ANSWER_NOT_FOUND" in message_text:
         print("ERROR: Answer not found")
-        return "I was unable to find the answer on that website. Please pick another one"
+        return {
+            "message": "I was unable to find the answer on that website. Please pick another one",
+            "total_tokens": total_tokens
+        }
     else:
         print(f"GPT: {message_text}")
-        return message_text
+        return {
+            "message": message_text,
+            "total_tokens": total_tokens
+        }
+
 
 def visionCrawl(url, prompt):
     b64_image = url2screenshot(url)
@@ -80,7 +91,9 @@ def visionCrawl(url, prompt):
     if b64_image == "Failed to scrape the website":
         return "I was unable to crawl that site. Please pick a different one."
     else:
-        return visionExtract(b64_image, prompt)
+        extraction_result = visionExtract(b64_image, prompt)
+        # Adjust the return value to include token usage information
+        return f"Response: {extraction_result['message']}\nTotal Tokens: {extraction_result.get('total_tokens', 'Unknown')}"
 
-response = visionCrawl("https://relevanceai.com/pricing", "Extract the pricing info")
+response = visionCrawl("https://openai.com/pricing", "Tell me what is the price of gpt3.5-turbo based on this screenshot")
 print(response)
